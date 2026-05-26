@@ -1,20 +1,10 @@
 name: Publish GitHub Pages
 
 on:
-  release:
-    types:
-      - published
+  push:
+    branches:
+      - main
   workflow_dispatch:
-    inputs:
-      tag:
-        description: Release tag to deploy
-        required: true
-        type: string
-      asset_name:
-        description: Archive asset name
-        required: false
-        default: dist.zip
-        type: string
 
 permissions:
   contents: read
@@ -33,26 +23,23 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     env:
+      RELEASE_TAG: V0.0.1
       DEFAULT_ASSET_NAME: dist.zip
 
     steps:
-      - name: Resolve tag and asset name
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve asset name
         id: vars
         run: |
           set -euo pipefail
-
-          if [ "${{ github.event_name }}" = "release" ]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
-            echo "asset_name=${DEFAULT_ASSET_NAME}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-            echo "asset_name=${{ inputs.asset_name }}" >> "$GITHUB_OUTPUT"
-          fi
+          echo "asset_name=$DEFAULT_ASSET_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Download release asset
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.vars.outputs.tag }}
+          TAG: ${{ env.RELEASE_TAG }}
           ASSET_NAME: ${{ steps.vars.outputs.asset_name }}
         run: |
           set -euo pipefail
@@ -89,6 +76,17 @@ jobs:
           [ -f "$publish_dir/index.html" ]
 
           echo "publish_dir=$publish_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Prune heavy attachments from Pages copy
+        env:
+          RELEASE_TAG: ${{ env.RELEASE_TAG }}
+        run: |
+          set -euo pipefail
+          python3 scripts/prune_pages_payload.py \
+            --site-root "${{ steps.extract.outputs.publish_dir }}" \
+            --release-tag "$RELEASE_TAG" \
+            --image-max-bytes 1500000 \
+            --file-max-bytes 100000
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

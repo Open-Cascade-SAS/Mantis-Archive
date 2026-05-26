@@ -38,7 +38,7 @@ Some files may be transformed for web publication efficiency, for example:
 - large CAD or text-like technical files may be stored in compressed form
 - oversized raster images may be resized for web delivery
 
-These changes are made only to support long-term static hosting and practical distribution of the archive.
+The GitHub Pages copy may omit large attachments from direct web publication. Small images and very small files can remain available on the site, while the full release package remains the authoritative archive payload.
 
 ## Using the archive
 
