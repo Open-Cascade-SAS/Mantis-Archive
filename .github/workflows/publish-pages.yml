@@ -1,0 +1,103 @@
+name: Publish GitHub Pages
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to deploy
+        required: true
+        type: string
+      asset_name:
+        description: Archive asset name
+        required: false
+        default: dist.zip
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    env:
+      DEFAULT_ASSET_NAME: dist.zip
+
+    steps:
+      - name: Resolve tag and asset name
+        id: vars
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+            echo "asset_name=${DEFAULT_ASSET_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "asset_name=${{ inputs.asset_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.vars.outputs.tag }}
+          ASSET_NAME: ${{ steps.vars.outputs.asset_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release"
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$ASSET_NAME" \
+            --dir "$RUNNER_TEMP/release"
+
+      - name: Extract archive
+        id: extract
+        env:
+          ASSET_NAME: ${{ steps.vars.outputs.asset_name }}
+        run: |
+          set -euo pipefail
+
+          archive="$RUNNER_TEMP/release/$ASSET_NAME"
+          extracted="$RUNNER_TEMP/extracted"
+          publish_dir="$RUNNER_TEMP/site"
+
+          rm -rf "$extracted" "$publish_dir"
+          mkdir -p "$extracted" "$publish_dir"
+
+          unzip -q "$archive" -d "$extracted"
+
+          if [ -f "$extracted/index.html" ]; then
+            cp -R "$extracted"/. "$publish_dir"/
+          else
+            first_dir="$(find "$extracted" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+            [ -n "$first_dir" ]
+            cp -R "$first_dir"/. "$publish_dir"/
+          fi
+
+          [ -f "$publish_dir/index.html" ]
+
+          echo "publish_dir=$publish_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ steps.extract.outputs.publish_dir }}
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
